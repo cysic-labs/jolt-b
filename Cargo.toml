@@ -24,6 +24,7 @@ members = [
     "jolt-core",
     "tracer",
     "common",
+    "goldilocks",
     "jolt-sdk",
     "jolt-sdk/macros",
     "examples/collatz",

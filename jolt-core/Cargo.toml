@@ -68,6 +68,8 @@ common = { path = "../common" }
 tracer = { path = "../tracer" }
 bincode = "1.3.3"
 
+goldilocks = { path = "../goldilocks"}
+
 [build-dependencies]
 common = { path = "../common" }
 
