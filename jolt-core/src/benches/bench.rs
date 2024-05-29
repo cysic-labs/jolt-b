@@ -1,8 +1,8 @@
 use crate::host;
 use crate::jolt::vm::rv32i_vm::{RV32IJoltVM, C, M};
 use crate::jolt::vm::Jolt;
-use crate::poly::commitment::hyrax::HyraxScheme;
-use ark_bn254::G1Projective;
+use crate::poly::commitment::basefold::BasefoldCommitmentScheme;
+use goldilocks::Goldilocks;
 use serde::Serialize;
 
 #[derive(Debug, Copy, Clone, clap::ValueEnum)]
@@ -66,12 +66,12 @@ fn prove_example<T: Serialize>(
             program.trace();
 
         let preprocessing: crate::jolt::vm::JoltPreprocessing<
-            ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>,
-            HyraxScheme<ark_ec::short_weierstrass::Projective<ark_bn254::g1::Config>>,
+            _,
+            BasefoldCommitmentScheme<Goldilocks>,
         > = RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 22);
 
         let (jolt_proof, jolt_commitments) =
-            <RV32IJoltVM as Jolt<_, HyraxScheme<G1Projective>, C, M>>::prove(
+            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks>, C, M>>::prove(
                 io_device,
                 bytecode_trace,
                 memory_trace,
@@ -116,12 +116,14 @@ fn sha2chain() -> Vec<(tracing::Span, Box<dyn FnOnce()>)> {
             program.trace();
 
         let preprocessing: crate::jolt::vm::JoltPreprocessing<
-            ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>,
-            HyraxScheme<ark_ec::short_weierstrass::Projective<ark_bn254::g1::Config>>,
+            _,
+            BasefoldCommitmentScheme<Goldilocks>,
+            // ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>,
+            // HyraxScheme<ark_ec::short_weierstrass::Projective<ark_bn254::g1::Config>>,
         > = RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 22);
 
         let (jolt_proof, jolt_commitments) =
-            <RV32IJoltVM as Jolt<_, HyraxScheme<G1Projective>, C, M>>::prove(
+            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks>, C, M>>::prove(
                 io_device,
                 bytecode_trace,
                 memory_trace,

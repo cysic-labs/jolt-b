@@ -15,7 +15,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use crate::field::SmallField;
 use crate::Goldilocks;
 
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid, Validate};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 
 /// Degree 3 Goldilocks extension field mod x^2 - 7
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]

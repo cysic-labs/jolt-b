@@ -1,0 +1,22 @@
+[package]
+name = "octopos"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+poseidon = { git = "https://github.com/zhenfeizhang/poseidon" }
+goldilocks = { path = "../goldilocks" }
+rayon = { version = "^1.8.0" }
+itertools = "0.10.0"
+ark-serialize = { version = "0.4.2", default-features = false, features = [
+    "derive",
+] }
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+ark-std = "0.4.0"
+rand_core = "0.6.4"
+
+[[bench]]
+name = "benchmark"
+harness = false

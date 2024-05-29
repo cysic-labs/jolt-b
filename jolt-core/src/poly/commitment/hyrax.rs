@@ -78,11 +78,10 @@ impl<F: JoltField, G: CurveGroup<ScalarField = F>> CommitmentScheme for HyraxSch
     ) -> Vec<Self::Commitment> {
         HyraxCommitment::batch_commit(evals, gens, batch_type)
     }
-    fn commit_slice(eval_slice: &[Self::Field], generators: &Self::Setup) -> Self::Commitment {
-        HyraxCommitment::commit_slice(eval_slice, generators)
-    }
     fn prove(
         poly: &DensePolynomial<Self::Field>,
+        _gens: &Self::Setup,
+        _comm: &Self::Commitment,
         opening_point: &[Self::Field],
         transcript: &mut ProofTranscript,
     ) -> Self::Proof {
@@ -91,18 +90,51 @@ impl<F: JoltField, G: CurveGroup<ScalarField = F>> CommitmentScheme for HyraxSch
     }
     fn batch_prove(
         polynomials: &[&DensePolynomial<Self::Field>],
+        #[allow(unused)] gens: &Self::Setup,
+        #[allow(unused)] comms: &[&Self::Commitment],
         opening_point: &[Self::Field],
         openings: &[Self::Field],
         batch_type: BatchType,
         transcript: &mut ProofTranscript,
     ) -> Self::BatchedProof {
-        BatchedHyraxOpeningProof::prove(
+        #[cfg(test)]
+        {
+            let batch_commits = Self::batch_commit_polys_ref(polynomials, gens, batch_type);
+            for (i_c, b_c) in comms.into_iter().zip(batch_commits.iter()) {
+                if i_c.row_commitments != b_c.row_commitments {
+                    println!("commits {:?}", i_c);
+                    println!("batch commits {:?}", b_c);
+
+                    assert!(false);
+                }
+            }
+        }
+
+        #[cfg(test)]
+        let mut verifier_transcript = transcript.clone();
+
+        let proof = BatchedHyraxOpeningProof::prove(
             polynomials,
             opening_point,
             openings,
             batch_type,
             transcript,
-        )
+        );
+
+        #[cfg(test)]
+        {
+            proof
+                .verify(
+                    gens,
+                    opening_point,
+                    openings,
+                    comms,
+                    &mut verifier_transcript,
+                )
+                .unwrap();
+        }
+
+        proof
     }
     fn verify(
         proof: &Self::Proof,

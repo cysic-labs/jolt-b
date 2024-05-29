@@ -6,9 +6,11 @@ pub use fp::Goldilocks;
 pub use fp2::GoldilocksExt2;
 pub use fp3::GoldilocksExt3;
 
-pub use fp::MODULUS;
 pub use ff::{Field, PrimeField};
+pub use fp::MODULUS;
 pub use halo2curves::serde::SerdeObject;
+
+pub mod p3_compatability;
 
 #[macro_use]
 mod derive;

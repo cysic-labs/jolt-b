@@ -127,7 +127,7 @@ impl BytecodeRow {
 }
 
 pub fn random_bytecode_trace(
-    bytecode: &Vec<BytecodeRow>,
+    bytecode: &[BytecodeRow],
     num_ops: usize,
     rng: &mut StdRng,
 ) -> Vec<BytecodeRow> {
@@ -592,6 +592,8 @@ where
     #[tracing::instrument(skip_all, name = "BytecodeReadWriteOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &BytecodePolynomials<F, C>,
+        generators: &C::Setup,
+        commitment: &BytecodeCommitment<C>,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,
@@ -610,6 +612,8 @@ where
                 &polynomials.v_read_write[3],
                 &polynomials.v_read_write[4],
             ],
+            generators,
+            &commitment.trace_commitments.iter().collect::<Vec<_>>(),
             opening_point,
             &combined_openings,
             BatchType::Big,
@@ -672,11 +676,19 @@ where
     #[tracing::instrument(skip_all, name = "BytecodeInitFinalOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &BytecodePolynomials<F, C>,
+        generators: &C::Setup,
+        commitment: &BytecodeCommitment<C>,
         opening_point: &[F],
         _openings: &Self,
         transcript: &mut ProofTranscript,
     ) -> Self::Proof {
-        C::prove(&polynomials.t_final, opening_point, transcript)
+        C::prove(
+            &polynomials.t_final,
+            generators,
+            &commitment.t_final_commitment,
+            opening_point,
+            transcript,
+        )
     }
 
     fn compute_verifier_openings(
@@ -788,7 +800,13 @@ mod tests {
 
         let generators = HyraxScheme::<G1Projective>::setup(&commitment_shapes);
         let commitments = polys.commit(&generators);
-        let proof = BytecodeProof::prove_memory_checking(&preprocessing, &polys, &mut transcript);
+        let proof = BytecodeProof::prove_memory_checking(
+            &preprocessing,
+            &generators,
+            &commitments,
+            &polys,
+            &mut transcript,
+        );
 
         let mut transcript = ProofTranscript::new(b"test_transcript");
         BytecodeProof::verify_memory_checking(
@@ -828,7 +846,13 @@ mod tests {
 
         let mut transcript = ProofTranscript::new(b"test_transcript");
 
-        let proof = BytecodeProof::prove_memory_checking(&preprocessing, &polys, &mut transcript);
+        let proof = BytecodeProof::prove_memory_checking(
+            &preprocessing,
+            &generators,
+            &commitments,
+            &polys,
+            &mut transcript,
+        );
 
         let mut transcript = ProofTranscript::new(b"test_transcript");
         BytecodeProof::verify_memory_checking(

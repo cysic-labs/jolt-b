@@ -43,7 +43,7 @@ pub trait SmallField: Serialize + SerdeObject + FromUniformBytes<64> + Hash {
 
     /// Multiply self by a base field element
     fn mul_base(&self, rhs: &Self::BaseField) -> Self {
-        let mut res = self.clone();
+        let mut res = *self;
         res.mul_assign_base(rhs);
         res
     }
@@ -58,7 +58,7 @@ impl SmallField for Goldilocks {
     fn bytes_to_field_elements(bytes: &[u8]) -> Vec<Self> {
         bytes
             .chunks(8)
-            .map(|chunk| Self::from_raw_bytes_unchecked(chunk))
+            .map(Self::from_raw_bytes_unchecked)
             .collect::<Vec<_>>()
     }
 
@@ -95,7 +95,7 @@ impl SmallField for GoldilocksExt2 {
     fn bytes_to_field_elements(bytes: &[u8]) -> Vec<Self> {
         bytes
             .chunks(16)
-            .map(|chunk| Self::from_raw_bytes_unchecked(chunk))
+            .map(Self::from_raw_bytes_unchecked)
             .collect::<Vec<_>>()
     }
 
@@ -103,9 +103,7 @@ impl SmallField for GoldilocksExt2 {
         self.0
             .iter()
             .map(|a| a.to_canonical_u64())
-            .collect::<Vec<u64>>()
-            .try_into()
-            .unwrap()
+            .collect::<Vec<_>>()
     }
 
     fn to_limbs(&self) -> Vec<Goldilocks> {
@@ -139,7 +137,7 @@ impl SmallField for GoldilocksExt3 {
     fn bytes_to_field_elements(bytes: &[u8]) -> Vec<Self> {
         bytes
             .chunks(24)
-            .map(|chunk| Self::from_raw_bytes_unchecked(chunk))
+            .map(Self::from_raw_bytes_unchecked)
             .collect::<Vec<_>>()
     }
 
@@ -147,9 +145,7 @@ impl SmallField for GoldilocksExt3 {
         self.0
             .iter()
             .map(|a| a.to_canonical_u64())
-            .collect::<Vec<u64>>()
-            .try_into()
-            .unwrap()
+            .collect::<Vec<_>>()
     }
 
     fn to_limbs(&self) -> Vec<Goldilocks> {

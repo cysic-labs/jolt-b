@@ -167,10 +167,6 @@ impl<F: JoltField> SumcheckInstanceProof<F> {
         let mut compressed_polys: Vec<CompressedUniPoly<F>> = Vec::new();
 
         for _round in 0..num_rounds {
-            // Vector storing evaluations of combined polynomials g(x) = P_0(x) * ... P_{num_polys} (x)
-            // for points {0, ..., |g(x)|}
-            let mut eval_points = vec![F::zero(); combined_degree + 1];
-
             let mle_half = polys[0].len() / 2;
 
             let accum: Vec<Vec<F>> = (0..mle_half)
@@ -219,16 +215,12 @@ impl<F: JoltField> SumcheckInstanceProof<F> {
                 })
                 .collect();
 
-            eval_points
-                .par_iter_mut()
-                .enumerate()
-                .for_each(|(poly_i, eval_point)| {
-                    *eval_point = accum
-                        .par_iter()
-                        .take(mle_half)
-                        .map(|mle| mle[poly_i])
-                        .sum::<F>();
-                });
+            // Vector storing evaluations of combined polynomials g(x) = P_0(x) * ... P_{num_polys} (x)
+            // for points {0, ..., |g(x)|}
+            let eval_points: Vec<F> = (0..combined_degree + 1)
+                .into_par_iter()
+                .map(|poly_i| accum.par_iter().map(|mle| mle[poly_i]).sum())
+                .collect();
 
             let round_uni_poly = UniPoly::from_evals(&eval_points);
 
@@ -1053,7 +1045,7 @@ impl<F: JoltField> SumcheckInstanceProof<F> {
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Debug)]
 pub struct SumcheckInstanceProof<F: JoltField> {
-    compressed_polys: Vec<CompressedUniPoly<F>>,
+    pub compressed_polys: Vec<CompressedUniPoly<F>>,
 }
 
 impl<F: JoltField> SumcheckInstanceProof<F> {

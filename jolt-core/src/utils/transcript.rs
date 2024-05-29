@@ -1,7 +1,9 @@
 use crate::poly::field::JoltField;
 use ark_ec::CurveGroup;
 use merlin::Transcript;
+use std::mem::size_of;
 
+#[derive(Clone)]
 pub struct ProofTranscript {
     inner: Transcript,
 }
@@ -55,6 +57,17 @@ impl ProofTranscript {
             self.append_point(label, item);
         }
         self.inner.append_message(label, b"end_append_vector");
+    }
+
+    pub fn challenge_usize(&mut self, label: &'static [u8]) -> usize {
+        let mut buf = [0u8; size_of::<usize>()];
+
+        self.inner.challenge_bytes(label, &mut buf);
+        usize::from_be_bytes(buf)
+    }
+
+    pub fn challenge_usizes(&mut self, label: &'static [u8], len: usize) -> Vec<usize> {
+        (0..len).map(|_| self.challenge_usize(label)).collect()
     }
 
     pub fn challenge_scalar<F: JoltField>(&mut self, label: &'static [u8]) -> F {

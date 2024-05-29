@@ -5,12 +5,14 @@ use crate::utils::{self, compute_dotproduct, compute_dotproduct_low_optimized};
 
 use crate::poly::field::JoltField;
 use crate::utils::math::Math;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use core::ops::Index;
+use itertools::Itertools;
 use rayon::prelude::*;
 use std::ops::AddAssign;
 
-#[derive(Debug, PartialEq)]
-pub struct DensePolynomial<F> {
+#[derive(Debug, PartialEq, CanonicalDeserialize, CanonicalSerialize)]
+pub struct DensePolynomial<F: JoltField> {
     num_vars: usize, // the number of variables in the multilinear polynomial
     len: usize,
     Z: Vec<F>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
@@ -34,8 +36,9 @@ impl<F: JoltField> DensePolynomial<F> {
     pub fn new_padded(evals: Vec<F>) -> Self {
         // Pad non-power-2 evaluations to fill out the dense multilinear polynomial
         let mut poly_evals = evals;
-        while !(utils::is_power_of_two(poly_evals.len())) {
-            poly_evals.push(F::zero());
+        if !utils::is_power_of_two(poly_evals.len()) {
+            let next_po2 = poly_evals.len().next_power_of_two();
+            poly_evals.resize(next_po2, F::zero())
         }
 
         DensePolynomial {
@@ -217,6 +220,84 @@ impl<F: JoltField> DensePolynomial<F> {
         compute_dotproduct(&self.Z, &chis)
     }
 
+    pub fn interpolate_over_hypercube_impl(evals: &[F]) -> Vec<F> {
+        let mut coeffs = evals.to_vec();
+        let num_vars = coeffs.len().log_2();
+
+        for i in 1..=num_vars {
+            let chunk_size = 1 << i;
+
+            coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+                let half_chunk = chunk_size >> 1;
+                let (left, right) = chunk.split_at_mut(half_chunk);
+                right.iter_mut().zip(left.iter()).for_each(|(a, b)| *a -= b);
+            })
+        }
+
+        coeffs
+    }
+
+    // interpolate Z evaluations over boolean hypercube {0, 1}^n
+    pub fn interpolate_over_hypercube(&self) -> Vec<F> {
+        // Take eq poly as an example:
+        //
+        // The evaluation format of an eq poly over {0, 1}^2 follows:
+        // eq(\vec{r}, \vec{x}) with \vec{x} order in x0 x1
+        //
+        //     00             01            10          11
+        // (1-r0)(1-r1)    (1-r0)r1      r0(1-r1)      r0r1
+        //
+        // The interpolated version over x0 x1 (ordered in x0 x1) follows:
+        //
+        //     00               01                  10                11
+        // (1-r0)(1-r1)    (1-r0)(2r1-1)      (2r0-1)(1-r1)     (2r0-1)(2r1-1)
+
+        // NOTE(Hang): I think the original implementation of this dense multilinear
+        // polynomial requires a resizing of coeffs by num vars,
+        // e.g., when sumchecking - the num_var reduces, while Z evals can reuse the
+        // whole space, which means we cannot simply relying Z's size itself.
+        Self::interpolate_over_hypercube_impl(&self.Z[..self.len()])
+    }
+
+    // NOTE: we are assuming that the polys are of the same size, but the polys
+    // can be (and should be) of different sized, yet our implementation only
+    // provide a simplified version.
+    pub fn low_degree_extension(polys: &[&Self]) -> Self {
+        // NOTE: the order is reversed w.r.t. bit index, i.e.,
+        // supposing polys share x_0 to x_n, while LDE append k variables,
+        // then polynomials are ordered by x_0 ... x_{k - 1}, x_k, ... x_{n + k},
+        // where the original coefficients shift right by k.
+        let new_z = polys
+            .iter()
+            .flat_map(|p| p.evals_ref().iter())
+            .cloned()
+            .collect_vec();
+
+        Self::new_padded(new_z)
+    }
+
+    // on given an evaluation point x_0...x_n,
+    // output a tensor product of x_j product of order:
+    // 1, x_n, x_{n-1}, x_n x_{n-1}, x_{n-2} ..., \prod x_i
+    //
+    // the inner product of the tensor product vec with boolean hypercube interpolation
+    // should yield the evaluation of the polynomial on the point.
+    #[allow(unused)]
+    pub fn eval_point_tensor_product(point: &[F]) -> Vec<F> {
+        let tensor_prod_size = 1 << point.len();
+        let mut eval_tensor_prod: Vec<F> = vec![F::one(); tensor_prod_size];
+
+        for packed_indices in 0..tensor_prod_size {
+            for (j, x_j) in point.iter().rev().enumerate() {
+                if (packed_indices >> j) & 1 != 0 {
+                    eval_tensor_prod[packed_indices] *= x_j;
+                }
+            }
+        }
+
+        eval_tensor_prod
+    }
+
     pub fn evaluate_at_chi(&self, chis: &[F]) -> F {
         compute_dotproduct(&self.Z, chis)
     }
@@ -280,7 +361,7 @@ impl<F: JoltField> Clone for DensePolynomial<F> {
     }
 }
 
-impl<F> Index<usize> for DensePolynomial<F> {
+impl<F: JoltField> Index<usize> for DensePolynomial<F> {
     type Output = F;
 
     #[inline(always)]
@@ -289,7 +370,7 @@ impl<F> Index<usize> for DensePolynomial<F> {
     }
 }
 
-impl<F> AsRef<DensePolynomial<F>> for DensePolynomial<F> {
+impl<F: JoltField> AsRef<DensePolynomial<F>> for DensePolynomial<F> {
     fn as_ref(&self) -> &DensePolynomial<F> {
         self
     }
@@ -316,6 +397,11 @@ mod tests {
     use super::*;
     use ark_bn254::Fr;
     use ark_std::test_rng;
+    use rand_core::RngCore;
+
+    fn random_vec<F: JoltField>(size: usize, rng: &mut impl RngCore) -> Vec<F> {
+        (0..size).map(|_| F::random(rng)).collect()
+    }
 
     fn evaluate_with_LR<F: JoltField>(Z: &[F], r: &[F]) -> F {
         let ell = r.len();
@@ -440,11 +526,7 @@ mod tests {
     fn check_memoized_chis_helper<F: JoltField>() {
         let mut prng = test_rng();
 
-        let s = 10;
-        let mut r: Vec<F> = Vec::new();
-        for _i in 0..s {
-            r.push(F::random(&mut prng));
-        }
+        let r = random_vec(10, &mut prng);
         let chis = compute_chis_at_r::<F>(&r);
         let chis_m = EqPolynomial::<F>::new(r).evals();
         assert_eq!(chis, chis_m);
@@ -458,11 +540,7 @@ mod tests {
     fn check_factored_chis_helper<F: JoltField>() {
         let mut prng = test_rng();
 
-        let s = 10;
-        let mut r: Vec<F> = Vec::new();
-        for _i in 0..s {
-            r.push(F::random(&mut prng));
-        }
+        let r: Vec<F> = random_vec(10, &mut prng);
         let chis = EqPolynomial::new(r.clone()).evals();
         let (L_size, _R_size) = matrix_dimensions(r.len(), 1);
         let (L, R) = EqPolynomial::new(r).compute_factored_evals(L_size);
@@ -478,11 +556,7 @@ mod tests {
     fn check_memoized_factored_chis_helper<F: JoltField>() {
         let mut prng = test_rng();
 
-        let s = 10;
-        let mut r: Vec<F> = Vec::new();
-        for _i in 0..s {
-            r.push(F::random(&mut prng));
-        }
+        let r: Vec<F> = random_vec(10, &mut prng);
         let (L_size, _R_size) = matrix_dimensions(r.len(), 1);
         let (L, R) = compute_factored_chis_at_r(&r);
         let eq = EqPolynomial::new(r);
@@ -512,5 +586,26 @@ mod tests {
             dense_poly.evaluate(vec![Fr::from(3), Fr::from(4)].as_slice()),
             Fr::from(8)
         );
+    }
+
+    #[test]
+    fn test_interpolation_evaulation_eq() {
+        let mut rng = test_rng();
+
+        let num_var = 10;
+        let r_vec: Vec<Fr> = random_vec(num_var, &mut rng);
+
+        let eq_poly = EqPolynomial::new(r_vec);
+        let eq_evals = eq_poly.evals();
+
+        let dense_poly = DensePolynomial::new(eq_evals.clone());
+        let eval_point: Vec<Fr> = random_vec(num_var, &mut rng);
+        let ideal_eval: Fr = dense_poly.evaluate(&eval_point);
+
+        let eval_tensor_prod = DensePolynomial::eval_point_tensor_product(&eval_point);
+        let dense_poly_interpolation = dense_poly.interpolate_over_hypercube();
+        let eval = compute_dotproduct(&eval_tensor_prod, &dense_poly_interpolation);
+
+        assert_eq!(eval, ideal_eval);
     }
 }

@@ -39,6 +39,8 @@ where
     /// by `openings`. The polynomials should already be committed by the prover.
     fn prove_openings(
         polynomials: &Polynomials,
+        generators: &C::Setup,
+        commitment: &Polynomials::Commitment,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,

@@ -90,12 +90,16 @@ where
     #[tracing::instrument(skip_all, name = "PrimarySumcheckOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &SurgePolys<F, PCS>,
+        generators: &PCS::Setup,
+        commitment: &SurgeCommitment<PCS>,
         opening_point: &[F],
         E_poly_openings: &Vec<F>,
         transcript: &mut ProofTranscript,
     ) -> Self::Proof {
         PCS::batch_prove(
             &polynomials.E_polys.iter().collect::<Vec<_>>(),
+            generators,
+            &commitment.E_commitment.iter().collect::<Vec<_>>(),
             opening_point,
             E_poly_openings,
             BatchType::SurgeReadWrite,
@@ -153,6 +157,8 @@ where
     #[tracing::instrument(skip_all, name = "SurgeReadWriteOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &SurgePolys<F, PCS>,
+        generators: &PCS::Setup,
+        commitment: &SurgeCommitment<PCS>,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,
@@ -170,8 +176,16 @@ where
         ]
         .concat();
 
+        let read_write_commitments = commitment
+            .dim_read_commitment
+            .iter()
+            .chain(commitment.E_commitment.iter())
+            .collect::<Vec<_>>();
+
         PCS::batch_prove(
             &read_write_polys,
+            generators,
+            &read_write_commitments,
             opening_point,
             &read_write_openings,
             BatchType::SurgeReadWrite,
@@ -249,12 +263,16 @@ where
     #[tracing::instrument(skip_all, name = "SurgeFinalOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &SurgePolys<F, PCS>,
+        generators: &PCS::Setup,
+        commitment: &SurgeCommitment<PCS>,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,
     ) -> Self::Proof {
         PCS::batch_prove(
             &polynomials.final_cts.iter().collect::<Vec<_>>(),
+            generators,
+            &commitment.final_commitment.iter().collect::<Vec<_>>(),
             opening_point,
             &openings.final_openings,
             BatchType::SurgeInitFinal,
@@ -605,6 +623,8 @@ where
         let sumcheck_openings = PrimarySumcheckOpenings::open(&polynomials, &r_z); // TODO: use return value from prove_arbitrary?
         let sumcheck_opening_proof = PrimarySumcheckOpenings::prove_openings(
             &polynomials,
+            generators,
+            &commitment,
             &r_z,
             &sumcheck_openings,
             transcript,
@@ -618,8 +638,13 @@ where
             opening_proof: sumcheck_opening_proof,
         };
 
-        let memory_checking =
-            SurgeProof::prove_memory_checking(preprocessing, &polynomials, transcript);
+        let memory_checking = SurgeProof::prove_memory_checking(
+            preprocessing,
+            generators,
+            &commitment,
+            &polynomials,
+            transcript,
+        );
 
         SurgeProof {
             commitment,
@@ -679,7 +704,7 @@ where
     #[tracing::instrument(skip_all, name = "Surge::construct_polys")]
     fn construct_polys(
         preprocessing: &SurgePreprocessing<F, Instruction, C, M>,
-        ops: &Vec<Instruction>,
+        ops: &[Instruction],
     ) -> SurgePolys<F, PCS> {
         let num_lookups = ops.len().next_power_of_two();
         let mut dim_usize: Vec<Vec<usize>> = vec![vec![0; num_lookups]; C];

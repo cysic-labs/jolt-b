@@ -152,12 +152,14 @@ pub type RV32IJoltProof<F, CS> = JoltProof<C, M, F, CS, RV32I, RV32ISubtables<F>
 #[cfg(test)]
 mod tests {
     use ark_bn254::{Fr, G1Projective};
+    use goldilocks::Goldilocks;
 
     use std::collections::HashSet;
 
     use crate::host;
     use crate::jolt::instruction::JoltInstruction;
     use crate::jolt::vm::rv32i_vm::{Jolt, RV32IJoltVM, C, M};
+    use crate::poly::commitment::basefold::BasefoldCommitmentScheme;
     use crate::poly::commitment::hyrax::HyraxScheme;
     use std::sync::Mutex;
     use strum::{EnumCount, IntoEnumIterator};
@@ -202,7 +204,7 @@ mod tests {
         let preprocessing =
             RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 20);
         let (proof, commitments) =
-            <RV32IJoltVM as Jolt<Fr, HyraxScheme<G1Projective>, C, M>>::prove(
+            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks>, C, M>>::prove(
                 io_device,
                 bytecode_trace,
                 memory_trace,
@@ -231,7 +233,7 @@ mod tests {
         let preprocessing =
             RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 20);
         let (jolt_proof, jolt_commitments) =
-            <RV32IJoltVM as Jolt<_, HyraxScheme<G1Projective>, C, M>>::prove(
+            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks>, C, M>>::prove(
                 io_device,
                 bytecode_trace,
                 memory_trace,

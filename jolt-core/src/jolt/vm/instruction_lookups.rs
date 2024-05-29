@@ -147,6 +147,8 @@ where
     #[tracing::instrument(skip_all, name = "PrimarySumcheckOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &InstructionPolynomials<F, C>,
+        generators: &C::Setup,
+        commitment: &InstructionCommitment<C>,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,
@@ -164,8 +166,15 @@ where
         .concat();
         primary_sumcheck_openings.push(openings.lookup_outputs_opening);
 
+        let primary_poly_commitments = commitment.trace_commitment
+            [polynomials.dim.len() + polynomials.read_cts.len()..]
+            .iter()
+            .collect::<Vec<_>>();
+
         C::batch_prove(
             &primary_sumcheck_polys,
+            generators,
+            &primary_poly_commitments,
             opening_point,
             &primary_sumcheck_openings,
             BatchType::Big,
@@ -263,6 +272,8 @@ where
     #[tracing::instrument(skip_all, name = "InstructionReadWriteOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &InstructionPolynomials<F, C>,
+        generators: &C::Setup,
+        commitment: &InstructionCommitment<C>,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,
@@ -275,6 +286,8 @@ where
             .chain(polynomials.instruction_flag_polys.iter())
             .collect::<Vec<_>>();
 
+        let poly_count = read_write_polys.len();
+
         let read_write_openings: Vec<F> = [
             openings.dim_openings.as_slice(),
             openings.read_openings.as_slice(),
@@ -283,8 +296,14 @@ where
         ]
         .concat();
 
+        let read_write_polys_commitments = commitment.trace_commitment[..poly_count]
+            .iter()
+            .collect::<Vec<_>>();
+
         C::batch_prove(
             &read_write_polys,
+            generators,
+            &read_write_polys_commitments,
             opening_point,
             &read_write_openings,
             BatchType::Big,
@@ -365,12 +384,16 @@ where
     #[tracing::instrument(skip_all, name = "InstructionFinalOpenings::prove_openings")]
     fn prove_openings(
         polynomials: &InstructionPolynomials<F, C>,
+        generators: &C::Setup,
+        commitment: &InstructionCommitment<C>,
         opening_point: &[F],
         openings: &Self,
         transcript: &mut ProofTranscript,
     ) -> Self::Proof {
         C::batch_prove(
             &polynomials.final_cts.iter().collect::<Vec<_>>(),
+            generators,
+            &commitment.final_commitment.iter().collect::<Vec<_>>(),
             opening_point,
             &openings.final_openings,
             BatchType::Big,
@@ -861,6 +884,8 @@ where
     #[tracing::instrument(skip_all, name = "InstructionLookups::prove")]
     pub fn prove(
         polynomials: &InstructionPolynomials<F, CS>,
+        generators: &CS::Setup,
+        commitment: &InstructionCommitment<CS>,
         preprocessing: &InstructionLookupsPreprocessing<F>,
         transcript: &mut ProofTranscript,
     ) -> InstructionLookupsProof<C, M, F, CS, InstructionSet, Subtables> {
@@ -894,6 +919,8 @@ where
         };
         let sumcheck_opening_proof = PrimarySumcheckOpenings::prove_openings(
             polynomials,
+            generators,
+            commitment,
             &r_primary_sumcheck,
             &sumcheck_openings,
             transcript,
@@ -906,7 +933,13 @@ where
             opening_proof: sumcheck_opening_proof,
         };
 
-        let memory_checking = Self::prove_memory_checking(preprocessing, polynomials, transcript);
+        let memory_checking = Self::prove_memory_checking(
+            preprocessing,
+            generators,
+            commitment,
+            polynomials,
+            transcript,
+        );
 
         InstructionLookupsProof {
             _instructions: PhantomData,
@@ -973,7 +1006,7 @@ where
     #[tracing::instrument(skip_all, name = "InstructionLookups::polynomialize")]
     pub fn polynomialize(
         preprocessing: &InstructionLookupsPreprocessing<F>,
-        ops: &Vec<Option<InstructionSet>>,
+        ops: &[Option<InstructionSet>],
     ) -> InstructionPolynomials<F, CS> {
         let m: usize = ops.len().next_power_of_two();
 
@@ -1401,7 +1434,7 @@ where
 
     /// Converts each instruction in `ops` into its corresponding subtable lookup indices.
     /// The output is `C` vectors, each of length `m`.
-    fn subtable_lookup_indices(ops: &Vec<Option<InstructionSet>>) -> Vec<Vec<usize>> {
+    fn subtable_lookup_indices(ops: &[Option<InstructionSet>]) -> Vec<Vec<usize>> {
         let m = ops.len().next_power_of_two();
         let log_M = M.log_2();
         let chunked_indices: Vec<Vec<usize>> = ops
@@ -1442,7 +1475,7 @@ where
     }
 
     #[tracing::instrument(skip_all, name = "InstructionLookupsProof::compute_lookup_outputs")]
-    fn compute_lookup_outputs(instructions: &Vec<Option<InstructionSet>>) -> Vec<F> {
+    fn compute_lookup_outputs(instructions: &[Option<InstructionSet>]) -> Vec<F> {
         instructions
             .par_iter()
             .map(|op| {

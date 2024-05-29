@@ -3,6 +3,8 @@ use rayon::prelude::*;
 
 use crate::utils::{math::Math, thread::unsafe_allocate_zero_vec};
 
+use super::dense_mlpoly::DensePolynomial;
+
 pub struct EqPolynomial<F> {
     r: Vec<F>,
 }
@@ -29,6 +31,11 @@ impl<F: JoltField> EqPolynomial<F> {
             0..=PARALLEL_THRESHOLD => self.evals_serial(ell),
             _ => self.evals_parallel(ell),
         }
+    }
+
+    #[inline]
+    pub fn to_dense(&self) -> DensePolynomial<F> {
+        DensePolynomial::new(self.evals())
     }
 
     /// Computes evals serially. Uses less memory (and fewer allocations) than `evals_parallel`.

@@ -1,0 +1,15 @@
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.bbl
+*.blg
+*.pdfsync
+*.synctex.gz
+*.sublime-project
+*.sublime-workspace
+auto/*
+code/
+camera-ready/

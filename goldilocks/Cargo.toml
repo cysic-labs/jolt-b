@@ -16,6 +16,8 @@ serde = { version = "1.0", features = ["derive"] }
 ark-serialize = { version = "0.4.2", default-features = false, features = [
     "derive",
 ] }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", package = "p3-field" }
+num-bigint = { version = "0.4.3", default-features = false }
 
 [dev-dependencies]
 rand_xorshift = "0.3"

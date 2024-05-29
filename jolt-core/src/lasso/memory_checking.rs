@@ -96,6 +96,8 @@ where
     /// Generates a memory checking proof for the given committed polynomials.
     fn prove_memory_checking(
         preprocessing: &Self::Preprocessing,
+        generator: &C::Setup,
+        commitment: &Polynomials::Commitment,
         polynomials: &Polynomials,
         transcript: &mut ProofTranscript,
     ) -> MemoryCheckingProof<F, C, Polynomials, Self::ReadWriteOpenings, Self::InitFinalOpenings>
@@ -114,6 +116,8 @@ where
         let read_write_openings = Self::ReadWriteOpenings::open(polynomials, &r_read_write);
         let read_write_opening_proof = Self::ReadWriteOpenings::prove_openings(
             polynomials,
+            generator,
+            commitment,
             &r_read_write,
             &read_write_openings,
             transcript,
@@ -121,6 +125,8 @@ where
         let init_final_openings = Self::InitFinalOpenings::open(polynomials, &r_init_final);
         let init_final_opening_proof = Self::InitFinalOpenings::prove_openings(
             polynomials,
+            generator,
+            commitment,
             &r_init_final,
             &init_final_openings,
             transcript,

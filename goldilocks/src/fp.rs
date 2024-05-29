@@ -628,7 +628,6 @@ pub enum LegendreSymbol {
     QuadraticNonResidue = -1,
 }
 
-
 impl CanonicalDeserialize for Goldilocks {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,

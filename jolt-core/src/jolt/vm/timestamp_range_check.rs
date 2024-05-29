@@ -227,6 +227,8 @@ where
 
     fn prove_openings(
         _polynomials: &RangeCheckPolynomials<F, C>,
+        _generators: &C::Setup,
+        _commitment: &RangeCheckCommitment<C>,
         _opening_point: &[F],
         _openings: &RangeCheckOpenings<F, C>,
         _transcript: &mut ProofTranscript,
@@ -261,6 +263,8 @@ where
 
     fn prove_memory_checking(
         _: &NoPreprocessing,
+        _gens: &C::Setup,
+        _comm: &RangeCheckCommitment<C>,
         _polynomials: &RangeCheckPolynomials<F, C>,
         _transcript: &mut ProofTranscript,
     ) -> MemoryCheckingProof<
@@ -568,7 +572,10 @@ where
 {
     #[tracing::instrument(skip_all, name = "TimestampValidityProof::prove")]
     pub fn prove(
+        generators: &C::Setup,
+        range_commitment: &RangeCheckCommitment<C>,
         range_check_polys: &RangeCheckPolynomials<F, C>,
+        read_write_memory_commitment: &MemoryCommitment<C>,
         t_read_polynomials: &[DensePolynomial<F>; MEMORY_OPS_PER_INSTRUCTION],
         transcript: &mut ProofTranscript,
     ) -> Self {
@@ -585,6 +592,20 @@ where
 
         let polys: Vec<_> = polys_iter.clone().collect();
 
+        let trace_commitments_len = read_write_memory_commitment.trace_commitments.len();
+
+        // NOTE: t_read_ram 4 commitments being last 4 commitments of trace_commitments
+        // before these are t_read polynomials
+        let t_read_commitments = read_write_memory_commitment.trace_commitments
+            [trace_commitments_len - 4 - MEMORY_OPS_PER_INSTRUCTION..trace_commitments_len - 4]
+            .iter();
+
+        let commitments: Vec<_> = range_commitment
+            .commitments
+            .iter()
+            .chain(t_read_commitments)
+            .collect();
+
         let chis = EqPolynomial::new(r_grand_product.to_vec()).evals();
         let openings = polys_iter
             .clone()
@@ -593,6 +614,8 @@ where
 
         let opening_proof = C::batch_prove(
             &polys,
+            generators,
+            &commitments,
             &r_grand_product,
             &openings,
             BatchType::Big,

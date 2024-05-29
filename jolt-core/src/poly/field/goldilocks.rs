@@ -10,7 +10,7 @@ impl JoltField for Goldilocks {
     }
 
     fn is_zero(&self) -> bool {
-        <Self as goldilocks::Field>::is_zero_vartime(&self)
+        <Self as goldilocks::Field>::is_zero_vartime(self)
     }
 
     fn is_one(&self) -> bool {
@@ -26,7 +26,7 @@ impl JoltField for Goldilocks {
     }
 
     fn from_u64(n: u64) -> Option<Self> {
-        // According to its usage, it should reject instead of taking the modula. 
+        // According to its usage, it should reject instead of taking the modula.
         assert!(n < goldilocks::MODULUS);
         Some(<Self as From<u64>>::from(n))
     }
@@ -49,7 +49,7 @@ impl JoltField for GoldilocksExt2 {
     }
 
     fn is_zero(&self) -> bool {
-        <Self as goldilocks::Field>::is_zero_vartime(&self)
+        <Self as goldilocks::Field>::is_zero_vartime(self)
     }
 
     fn is_one(&self) -> bool {
@@ -65,7 +65,7 @@ impl JoltField for GoldilocksExt2 {
     }
 
     fn from_u64(n: u64) -> Option<Self> {
-        // According to its usage, it should reject instead of taking the modula. 
+        // According to its usage, it should reject instead of taking the modula.
         assert!(n < goldilocks::MODULUS);
         Some(<Self as From<u64>>::from(n))
     }

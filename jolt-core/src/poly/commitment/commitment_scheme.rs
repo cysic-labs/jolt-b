@@ -23,7 +23,7 @@ impl CommitShape {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum BatchType {
     Big,
     Small,
@@ -45,7 +45,6 @@ pub trait CommitmentScheme: Clone + Sync + Send + 'static {
         gens: &Self::Setup,
         batch_type: BatchType,
     ) -> Vec<Self::Commitment>;
-    fn commit_slice(evals: &[Self::Field], setup: &Self::Setup) -> Self::Commitment;
     fn batch_commit_polys(
         polys: &[DensePolynomial<Self::Field>],
         setup: &Self::Setup,
@@ -64,11 +63,15 @@ pub trait CommitmentScheme: Clone + Sync + Send + 'static {
     }
     fn prove(
         poly: &DensePolynomial<Self::Field>,
+        setup: &Self::Setup,
+        comm: &Self::Commitment,
         opening_point: &[Self::Field], // point at which the polynomial is evaluated
         transcript: &mut ProofTranscript,
     ) -> Self::Proof;
     fn batch_prove(
         polynomials: &[&DensePolynomial<Self::Field>],
+        setup: &Self::Setup,
+        comms: &[&Self::Commitment],
         opening_point: &[Self::Field],
         openings: &[Self::Field],
         batch_type: BatchType,

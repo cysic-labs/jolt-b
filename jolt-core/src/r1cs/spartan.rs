@@ -223,6 +223,8 @@ impl<F: JoltField, C: CommitmentScheme<Field = F>> UniformSpartanProof<F, C> {
     #[tracing::instrument(skip_all, name = "UniformSpartanProof::prove_precommitted")]
     pub fn prove_precommitted(
         key: &UniformSpartanKey<F>,
+        generators: &C::Setup,
+        commitment: &[&C::Commitment],
         witness_segments: Vec<Vec<F>>,
         transcript: &mut ProofTranscript,
     ) -> Result<Self, SpartanError> {
@@ -446,8 +448,11 @@ impl<F: JoltField, C: CommitmentScheme<Field = F>> UniformSpartanProof<F, C> {
             segmented_padded_witness.into_dense_polys();
         let witness_segment_polys_ref: Vec<&DensePolynomial<F>> =
             witness_segment_polys.iter().collect();
+
         let opening_proof = C::batch_prove(
             &witness_segment_polys_ref,
+            generators,
+            commitment,
             r_y_point,
             &witness_evals,
             BatchType::Big,
