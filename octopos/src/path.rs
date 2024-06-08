@@ -1,17 +1,13 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use goldilocks::Goldilocks;
-use std::mem::{size_of, transmute};
+use std::mem::size_of;
 
 use crate::{
-    hash::{
-        Digest, OctoposHasher, OCTOPOS_HASH_OUTPUT_WIDTH, OCTOPOS_LEAF_BYTES,
-        OCTOPOS_LEAF_GOLDILOCKS,
-    },
+    hash::{Digest, OctoposHasherTrait, OCTOPOS_LEAF_BYTES},
     tree::leaves_adic,
 };
 
 trait OctoposTreeNode: Sized {
-    fn verify(&self, root: &Digest, hasher: &OctoposHasher) -> bool;
+    fn verify<H: OctoposHasherTrait>(&self, root: &Digest, hasher: &H) -> bool;
 }
 
 #[derive(Clone, Debug, PartialEq, CanonicalDeserialize, CanonicalSerialize)]
@@ -20,42 +16,15 @@ pub(crate) struct OctoposInternalNode(pub Digest, pub Digest);
 #[derive(Clone, Debug, PartialEq, CanonicalDeserialize, CanonicalSerialize)]
 pub(crate) struct OctoposLeavesNode(pub [u8; OCTOPOS_LEAF_BYTES]);
 
-pub(crate) fn hash_leaves(leaves: &[u8; OCTOPOS_LEAF_BYTES], hasher: &OctoposHasher) -> Digest {
-    let mut hasher = hasher.clone();
-
-    unsafe {
-        let leaves_cast =
-            transmute::<&[u8; OCTOPOS_LEAF_BYTES], &[Goldilocks; OCTOPOS_LEAF_GOLDILOCKS]>(leaves);
-
-        hasher.update(leaves_cast);
-        let res = hasher.squeeze_vec()[..OCTOPOS_HASH_OUTPUT_WIDTH]
-            .try_into()
-            .unwrap();
-
-        Digest(res)
-    }
-}
-
-pub(crate) fn hash_internals(left: &Digest, right: &Digest, hasher: &OctoposHasher) -> Digest {
-    let mut hasher = hasher.clone();
-    hasher.update(left.0.as_slice());
-    hasher.update(right.0.as_slice());
-
-    let res = hasher.squeeze_vec()[..OCTOPOS_HASH_OUTPUT_WIDTH]
-        .try_into()
-        .unwrap();
-    Digest(res)
-}
-
 impl OctoposTreeNode for OctoposInternalNode {
-    fn verify(&self, root: &Digest, hasher: &OctoposHasher) -> bool {
-        hash_internals(&self.0, &self.1, hasher) == *root
+    fn verify<H: OctoposHasherTrait>(&self, root: &Digest, hasher: &H) -> bool {
+        hasher.hash_internals(&self.0, &self.1) == *root
     }
 }
 
 impl OctoposTreeNode for OctoposLeavesNode {
-    fn verify(&self, root: &Digest, hasher: &OctoposHasher) -> bool {
-        hash_leaves(&self.0, hasher) == *root
+    fn verify<H: OctoposHasherTrait>(&self, root: &Digest, hasher: &H) -> bool {
+        hasher.hash_leaves(&self.0) == *root
     }
 }
 
@@ -78,7 +47,7 @@ impl OctoposPath {
         (1 << self.internals.len()) * leaves_adic::<F>()
     }
 
-    pub fn verify<F: Sized>(&self, root: &Digest, hasher: &OctoposHasher) -> bool {
+    pub fn verify<F: Sized, H: OctoposHasherTrait>(&self, root: &Digest, hasher: &H) -> bool {
         assert!(self.index < self.leaves_len::<F>());
 
         let mut current_root = root;

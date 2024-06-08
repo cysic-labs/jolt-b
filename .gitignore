@@ -24,3 +24,4 @@ trace-**.json
 temp_file
 
 .vscode
+*.log

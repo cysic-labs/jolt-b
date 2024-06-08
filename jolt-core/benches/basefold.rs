@@ -11,6 +11,7 @@ use jolt_core::{
     },
     utils::transcript::ProofTranscript,
 };
+use sha2::Sha256;
 use std::{hint::black_box, time::Duration};
 
 fn basefold_poly_setup(num_vars: usize) -> Vec<Goldilocks> {
@@ -29,7 +30,10 @@ fn criterion_basefold_goldilocks(c: &mut Criterion) {
     let mut group = c.benchmark_group("basefold single commit and prove");
     for i in 10..=largest_num_vars {
         let seq_len = 1 << i;
-        let pp = BasefoldCommitmentScheme::setup(&[CommitShape::new(seq_len, BatchType::Big)]);
+        let pp = BasefoldCommitmentScheme::<_, Sha256>::setup(&[CommitShape::new(
+            seq_len,
+            BatchType::Big,
+        )]);
 
         group
             .bench_function(BenchmarkId::new("basefold commit", i), |b| {
@@ -46,7 +50,10 @@ fn criterion_basefold_goldilocks(c: &mut Criterion) {
     let mut rng = test_rng();
     for i in 10..=largest_num_vars {
         let seq_len = 1 << i;
-        let pp = BasefoldCommitmentScheme::setup(&[CommitShape::new(seq_len, BatchType::Big)]);
+        let pp = BasefoldCommitmentScheme::<_, Sha256>::setup(&[CommitShape::new(
+            seq_len,
+            BatchType::Big,
+        )]);
 
         group
             .bench_function(BenchmarkId::new("basefold prove", i), |b| {

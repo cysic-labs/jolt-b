@@ -5,12 +5,13 @@ edition = "2021"
 
 [dependencies]
 poseidon = { git = "https://github.com/zhenfeizhang/poseidon" }
-goldilocks = { path = "../goldilocks" }
-rayon = { version = "^1.8.0" }
-itertools = "0.10.0"
 ark-serialize = { version = "0.4.2", default-features = false, features = [
     "derive",
 ] }
+goldilocks = { path = "../goldilocks" }
+itertools = "0.10.0"
+rayon = { version = "^1.8.0" }
+sha2 = "0.10.8"
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

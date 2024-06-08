@@ -4,44 +4,53 @@ use rayon::prelude::*;
 use std::{cmp::min, mem::size_of};
 
 use crate::{
-    hash::{Digest, OctoposHasher, OCTOPOS_LEAF_BYTES, OCTOPOS_LEAF_GOLDILOCKS},
-    path::{hash_internals, hash_leaves, OctoposInternalNode, OctoposLeavesNode, OctoposPath},
+    hash::{Digest, OctoposHasherTrait, OCTOPOS_LEAF_BYTES, OCTOPOS_LEAF_GOLDILOCKS},
+    path::{OctoposInternalNode, OctoposLeavesNode, OctoposPath},
 };
 
 #[derive(Clone, Debug, CanonicalDeserialize, CanonicalSerialize)]
 pub struct OctoposTree<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize> {
     pub(crate) internals: Vec<Digest>,
+    // todo: change to Arc<Vec<F>> so we can avoid cloning it everywhere?
     pub leaves: Vec<F>,
 }
 
+#[inline(always)]
 pub(crate) const fn leaves_adic<F: Sized>() -> usize {
     OCTOPOS_LEAF_BYTES / size_of::<F>()
 }
 
-pub fn hash_leaves_vanilla<F: Sized + Clone + CanonicalSerialize + CanonicalDeserialize>(
+pub fn hash_leaves_vanilla<
+    F: Sized + Clone + CanonicalSerialize + CanonicalDeserialize,
+    H: OctoposHasherTrait + Sync,
+>(
     leaves: &[F],
     internals: &mut [Digest],
-    hasher: &OctoposHasher,
+    hasher: &H,
 ) {
     let chunk_size = leaves_adic::<F>();
-    let mut raw_bytes = [0u8; OCTOPOS_LEAF_BYTES];
 
     leaves
-        .chunks(chunk_size)
-        .enumerate()
-        .for_each(|(i, batch)| {
-            batch.iter().enumerate().for_each(|(i, elem)| {
+        .par_chunks(chunk_size)
+        .zip(internals.par_iter_mut())
+        .for_each(|(chunk, internal)| {
+            let mut raw_bytes = [0u8; OCTOPOS_LEAF_BYTES];
+            chunk.iter().enumerate().for_each(|(i, elem)| {
                 elem.serialize_uncompressed(&mut raw_bytes[i * size_of::<F>()..])
                     .unwrap();
             });
-            internals[i] = hash_leaves(&raw_bytes, hasher);
-        })
+
+            *internal = hasher.hash_leaves(&raw_bytes);
+        });
 }
 
-fn multithreaded_hash_leaves<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize>(
+fn multithreaded_hash_leaves<
+    F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize,
+    H: OctoposHasherTrait + Sync,
+>(
     leaves: &[F],
     internals: &mut [Digest],
-    hasher: &OctoposHasher,
+    hasher: &H,
 ) {
     let partitions = rayon::current_num_threads().next_power_of_two();
 
@@ -71,19 +80,21 @@ fn multithreaded_hash_leaves<F: Sized + Clone + CanonicalDeserialize + Canonical
     internals.copy_from_slice(hashed.as_slice());
 }
 
-pub fn hash_internals_vanilla(children: &[Digest], parents: &mut [Digest], hasher: &OctoposHasher) {
+pub fn hash_internals_vanilla<H: OctoposHasherTrait>(
+    children: &[Digest],
+    parents: &mut [Digest],
+    hasher: &H,
+) {
     children
         .chunks(2)
         .zip(parents.iter_mut())
-        .for_each(|(children, parent)| {
-            *parent = hash_internals(&children[0], &children[1], hasher)
-        });
+        .for_each(|(children, parent)| *parent = hasher.hash_internals(&children[0], &children[1]));
 }
 
-fn multithreaded_hash_internals(
+fn multithreaded_hash_internals<H: OctoposHasherTrait + Sync>(
     children: &[Digest],
     parents: &mut [Digest],
-    hasher: &OctoposHasher,
+    hasher: &H,
 ) {
     let partitions = rayon::current_num_threads().next_power_of_two();
 
@@ -116,7 +127,7 @@ fn multithreaded_hash_internals(
 impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize> OctoposTree<F> {
     // NOTE: we directly move the value here, as oracle should give point query result
     // together with MT path, so the leaves should appear only one copy in RAM.
-    pub fn new_from_leaves(leaves: Vec<F>, hasher: &OctoposHasher) -> Self {
+    pub fn new_from_leaves<H: OctoposHasherTrait + Sync>(leaves: Vec<F>, hasher: &H) -> Self {
         // assert leaves size being a power of 2
         assert_eq!(leaves.len() & (leaves.len() - 1), 0);
 
@@ -190,7 +201,6 @@ impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize> OctoposTree<F
             index_start_from = (index_start_from << 1) + 1;
             index_bits -= 1
         }
-
         OctoposPath {
             index,
             leaves: OctoposLeavesNode(leaves_chunk),

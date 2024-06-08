@@ -152,7 +152,9 @@ pub type RV32IJoltProof<F, CS> = JoltProof<C, M, F, CS, RV32I, RV32ISubtables<F>
 #[cfg(test)]
 mod tests {
     use ark_bn254::{Fr, G1Projective};
+    use ark_std::{end_timer, start_timer};
     use goldilocks::Goldilocks;
+    use sha2::Sha256;
 
     use std::collections::HashSet;
 
@@ -204,7 +206,7 @@ mod tests {
         let preprocessing =
             RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 20);
         let (proof, commitments) =
-            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks>, C, M>>::prove(
+            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks, Sha256>, C, M>>::prove(
                 io_device,
                 bytecode_trace,
                 memory_trace,
@@ -232,8 +234,10 @@ mod tests {
 
         let preprocessing =
             RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 20);
+
+        let timer = start_timer!(|| "Proving");
         let (jolt_proof, jolt_commitments) =
-            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks>, C, M>>::prove(
+            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks, Sha256>, C, M>>::prove(
                 io_device,
                 bytecode_trace,
                 memory_trace,
@@ -241,7 +245,7 @@ mod tests {
                 circuit_flags,
                 preprocessing.clone(),
             );
-
+        end_timer!(timer);
         let verification_result = RV32IJoltVM::verify(preprocessing, jolt_proof, jolt_commitments);
         assert!(
             verification_result.is_ok(),

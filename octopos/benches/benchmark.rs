@@ -2,9 +2,11 @@ use ark_std::test_rng;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use goldilocks::{Field, Goldilocks};
 use octopos::{
-    hash::{new_octopos_hasher, Digest},
+    hash::{Digest, OctoposHasherTrait, PoseidonHasher, OCTOPOS_OUTPUT_BYTES},
     tree::{hash_internals_vanilla, hash_leaves_vanilla, OctoposTree},
 };
+use rand_core::RngCore;
+use sha2::{Sha256, Sha512_256};
 use std::time::Duration;
 
 fn leaves_setup(num_leaves: usize) -> Vec<Goldilocks> {
@@ -15,25 +17,28 @@ fn leaves_setup(num_leaves: usize) -> Vec<Goldilocks> {
         .collect()
 }
 
-fn criterion_poseidon_leaves(c: &mut Criterion) {
+fn criterion_octopos_leaves<H: OctoposHasherTrait + Sync>(c: &mut Criterion) {
     let final_single_threaded_leaves_po2 = 20;
     let final_single_threaded_leaves = 1 << final_single_threaded_leaves_po2;
     let leaves = leaves_setup(final_single_threaded_leaves);
 
     let mut digest_buffer = vec![Digest::default(); final_single_threaded_leaves];
 
-    let mut group = c.benchmark_group("poseidion leaves");
+    let hasher = H::new_instance();
+    let mut group = c.benchmark_group(format!("{} leaves", hasher.name()));
 
     for i in 10..=final_single_threaded_leaves_po2 {
         let seq_len = 1 << i;
 
         group
-            .bench_function(BenchmarkId::new("poseidon leaves", i), |b| {
-                b.iter(|| {
-                    let hasher = new_octopos_hasher();
-                    hash_leaves_vanilla(&leaves[..seq_len], &mut digest_buffer[0..], &hasher);
-                })
-            })
+            .bench_function(
+                BenchmarkId::new(format!("{} leaves", hasher.name()), i),
+                |b| {
+                    b.iter(|| {
+                        hash_leaves_vanilla(&leaves[..seq_len], &mut digest_buffer[..], &hasher);
+                    })
+                },
+            )
             .sample_size(10)
             .measurement_time(Duration::from_secs(50));
     }
@@ -44,59 +49,61 @@ fn internal_setup(num_children: usize) -> Vec<Digest> {
 
     (0..num_children)
         .map(|_| {
-            Digest([
-                Goldilocks::random(&mut rng),
-                Goldilocks::random(&mut rng),
-                Goldilocks::random(&mut rng),
-                Goldilocks::random(&mut rng),
-            ])
+            let mut data = [0u8; OCTOPOS_OUTPUT_BYTES];
+            rng.fill_bytes(&mut data);
+            Digest(data)
         })
         .collect()
 }
 
-fn criterion_poseidon_internals(c: &mut Criterion) {
+fn criterion_octopos_internals<H: OctoposHasherTrait + Sync>(c: &mut Criterion) {
     let final_single_threaded_internals_po2 = 20;
     let final_single_threaded_internals = 1 << final_single_threaded_internals_po2;
     let leaves = internal_setup(final_single_threaded_internals);
 
     let mut digest_buffer = vec![Digest::default(); final_single_threaded_internals];
 
-    let mut group = c.benchmark_group("poseidion internals");
+    let hasher = H::new_instance();
+    let mut group = c.benchmark_group(format!("{} internals", hasher.name()));
 
     for i in 10..=final_single_threaded_internals_po2 {
         let seq_len = 1 << i;
 
         group
-            .bench_function(BenchmarkId::new("poseidon internals", i), |b| {
-                b.iter(|| {
-                    let hasher = new_octopos_hasher();
-                    hash_internals_vanilla(&leaves[..seq_len], &mut digest_buffer[0..], &hasher);
-                })
-            })
+            .bench_function(
+                BenchmarkId::new(format!("{} internals", hasher.name()), i),
+                |b| {
+                    b.iter(|| {
+                        hash_internals_vanilla(&leaves[..seq_len], &mut digest_buffer[..], &hasher);
+                    })
+                },
+            )
             .sample_size(10)
             .measurement_time(Duration::from_secs(50));
     }
 }
 
-fn criterion_octopos_tree(c: &mut Criterion) {
+fn criterion_octopos_tree<H: OctoposHasherTrait + Sync>(c: &mut Criterion) {
     let final_mt_po2 = 27;
     let final_mt_size = 1 << final_mt_po2;
     let leaves = leaves_setup(final_mt_size);
 
     let mut group = c.benchmark_group("octopos tree");
+    let hasher = H::new_instance();
 
     for i in 10..=final_mt_po2 {
         let leaves_size = 1 << i;
 
         group
-            .bench_function(BenchmarkId::new("octopos MT", i), |b| {
-                let hasher = new_octopos_hasher();
-
-                b.iter(|| {
-                    let bench_leaves = leaves[..leaves_size].to_vec();
-                    let _ = black_box(OctoposTree::new_from_leaves(bench_leaves, &hasher));
-                })
-            })
+            .bench_function(
+                BenchmarkId::new(format!("octopos {} MT", hasher.name()), i),
+                |b| {
+                    b.iter(|| {
+                        let bench_leaves = leaves[..leaves_size].to_vec();
+                        let _ = black_box(OctoposTree::new_from_leaves(bench_leaves, &hasher));
+                    })
+                },
+            )
             .sample_size(10)
             .measurement_time(Duration::from_secs(20));
     }
@@ -104,8 +111,14 @@ fn criterion_octopos_tree(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    criterion_poseidon_leaves,
-    criterion_poseidon_internals,
-    criterion_octopos_tree
+    criterion_octopos_leaves<PoseidonHasher>,
+    criterion_octopos_leaves<Sha256>,
+    criterion_octopos_leaves<Sha512_256>,
+    criterion_octopos_internals<PoseidonHasher>,
+    criterion_octopos_internals<Sha256>,
+    criterion_octopos_internals<Sha512_256>,
+    criterion_octopos_tree<PoseidonHasher>,
+    criterion_octopos_tree<Sha256>,
+    criterion_octopos_tree<Sha512_256>,
 );
 criterion_main!(benches);

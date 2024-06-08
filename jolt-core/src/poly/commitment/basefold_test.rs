@@ -1,6 +1,7 @@
 use ark_std::test_rng;
 use goldilocks::Goldilocks;
 use rand_core::RngCore;
+use sha2::Sha256;
 use std::time::Instant;
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
 };
 
 fn test_basefold_helper<F: JoltField>(num_vars: usize, rng: &mut impl RngCore) {
-    let pp = BasefoldPP::<Goldilocks>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
+    let pp = BasefoldPP::<Goldilocks, Sha256>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
 
     let poly_evals = (0..(1 << num_vars))
         .map(|_| Goldilocks::random(rng))
@@ -72,7 +73,7 @@ fn test_basefold_batch_helper<F: JoltField>(
     batch_size: usize,
     rng: &mut impl RngCore,
 ) {
-    let pp = BasefoldPP::<Goldilocks>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
+    let pp = BasefoldPP::<Goldilocks, Sha256>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
 
     let poly_evals: Vec<Vec<_>> = (0..batch_size)
         .map(|_| {

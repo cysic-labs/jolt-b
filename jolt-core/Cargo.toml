@@ -71,9 +71,12 @@ bincode = "1.3.3"
 goldilocks = { path = "../goldilocks"}
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", package = "p3-field" }
 p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", package = "p3-dft" }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git", package = "p3-matrix" }
 plonky2_util = "0.2.0"
 
 octopos = { path = "../octopos" }
+sha2 = "0.10.8"
+poseidon = { git = "https://github.com/zhenfeizhang/poseidon" }
 
 [build-dependencies]
 common = { path = "../common" }
@@ -92,6 +95,7 @@ path = "src/lib.rs"
 
 [features]
 default = [
+    "ark-std/print-trace",
     "ark-ec/parallel",
     "ark-ff/parallel",
     "ark-std/parallel",
