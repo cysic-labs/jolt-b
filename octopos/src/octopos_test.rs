@@ -1,6 +1,7 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::test_rng;
 use goldilocks::{Field, Goldilocks, GoldilocksExt2};
+use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use sha2::{Sha256, Sha512_256};
 use std::time::Instant;
@@ -47,4 +48,43 @@ fn test_octopos_correctness_helper<
             assert_eq!(path.leaf_value::<F>(), leaves[i])
         }
     });
+}
+
+#[test]
+fn test_octopos_batch_correctness() {
+    test_octopos_batch_correctness_helper::<Goldilocks, Sha256>();
+    test_octopos_batch_correctness_helper::<GoldilocksExt2, Sha256>();
+}
+
+fn test_octopos_batch_correctness_helper<
+    F: Field + CanonicalSerialize + CanonicalDeserialize,
+    H: OctoposHasherTrait + Sync,
+>() {
+    let mut rng = test_rng();
+
+    let leaves_num = 1 << 10;
+    let leaves: Vec<_> = (0..leaves_num).map(|_| F::random(&mut rng)).collect();
+
+    let hasher = H::new_instance();
+
+    let leavess = vec![
+        leaves[..512].to_vec(),
+        leaves[512..768].to_vec(),
+        leaves[768..896].to_vec(),
+        leaves[896..960].to_vec(),
+        leaves[960..992].to_vec(),
+        leaves[992..1008].to_vec(),
+        leaves[1008..1016].to_vec(),
+    ];
+
+    let trees = OctoposTree::batch_tree_for_recursive_oracles(leavess.clone(), &hasher);
+
+    let expected_trees = leavess
+        .into_iter()
+        .map(|l| OctoposTree::new_from_leaves(l, &hasher))
+        .collect_vec();
+
+    for (t, e_t) in trees.iter().zip(expected_trees.iter()) {
+        assert_eq!(t.root(), e_t.root())
+    }
 }

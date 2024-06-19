@@ -1,5 +1,6 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use goldilocks::Goldilocks;
+use itertools::Itertools;
 use rayon::prelude::*;
 use std::{cmp::min, mem::size_of};
 
@@ -31,8 +32,8 @@ pub fn hash_leaves_vanilla<
     let chunk_size = leaves_adic::<F>();
 
     leaves
-        .par_chunks(chunk_size)
-        .zip(internals.par_iter_mut())
+        .chunks_exact(chunk_size)
+        .zip(internals.iter_mut())
         .for_each(|(chunk, internal)| {
             let mut raw_bytes = [0u8; OCTOPOS_LEAF_BYTES];
             chunk.iter().enumerate().for_each(|(i, elem)| {
@@ -91,11 +92,18 @@ pub fn hash_internals_vanilla<H: OctoposHasherTrait>(
         .for_each(|(children, parent)| *parent = hasher.hash_internals(&children[0], &children[1]));
 }
 
+const SINGLE_THREAD_INTERNALS_THRESHOLD: usize = 1 << 9;
+
 fn multithreaded_hash_internals<H: OctoposHasherTrait + Sync>(
     children: &[Digest],
     parents: &mut [Digest],
     hasher: &H,
 ) {
+    if children.len() <= SINGLE_THREAD_INTERNALS_THRESHOLD {
+        hash_internals_vanilla(children, parents, hasher);
+        return;
+    }
+
     let partitions = rayon::current_num_threads().next_power_of_two();
 
     let task_partition_length = parents.len() / partitions;
@@ -124,12 +132,12 @@ fn multithreaded_hash_internals<H: OctoposHasherTrait + Sync>(
     parents.copy_from_slice(hashed.as_slice());
 }
 
-impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize> OctoposTree<F> {
+impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize + Default> OctoposTree<F> {
     // NOTE: we directly move the value here, as oracle should give point query result
     // together with MT path, so the leaves should appear only one copy in RAM.
     pub fn new_from_leaves<H: OctoposHasherTrait + Sync>(leaves: Vec<F>, hasher: &H) -> Self {
         // assert leaves size being a power of 2
-        assert_eq!(leaves.len() & (leaves.len() - 1), 0);
+        assert!(leaves.len().is_power_of_two());
 
         // assert leaves size being at least 8 Goldilocks
         assert!(leaves.len() * size_of::<F>() >= OCTOPOS_LEAF_GOLDILOCKS * size_of::<Goldilocks>());
@@ -156,6 +164,62 @@ impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize> OctoposTree<F
         }
 
         Self { internals, leaves }
+    }
+
+    pub fn batch_tree_for_recursive_oracles<H: OctoposHasherTrait + Sync>(
+        leaves_vec: Vec<Vec<F>>,
+        hasher: &H,
+    ) -> Vec<Self> {
+        // assert oracles are halved down from top to down
+        assert!(&leaves_vec
+            .iter()
+            .tuple_windows()
+            .all(|(l, r)| l.len() == r.len() * 2));
+
+        let mut concatenated = leaves_vec.clone().concat();
+        let concatenated_size = concatenated.len().next_power_of_two();
+        concatenated.resize(concatenated_size, F::default());
+
+        let mut tree_internals: Vec<_> = (1..=leaves_vec.len())
+            .rev()
+            .map(|i| vec![Digest::default(); (1 << i) * size_of::<F>() / Goldilocks::size() - 1])
+            .collect();
+
+        let batch_tree = Self::new_from_leaves(concatenated, hasher);
+
+        let mut starting_index = concatenated_size / leaves_adic::<F>() - 1;
+        let mut range_len = concatenated_size / leaves_adic::<F>();
+
+        while range_len > 1 {
+            let mut remaining_length = range_len;
+            let mut ith_subtree = 0;
+            let mut range_index = starting_index;
+
+            while remaining_length > 1 && ith_subtree < tree_internals.len() {
+                let internal_layer_len = remaining_length >> 1;
+
+                tree_internals[ith_subtree][internal_layer_len - 1..2 * internal_layer_len - 1]
+                    .copy_from_slice(
+                        &batch_tree.internals[range_index..(range_index + internal_layer_len)],
+                    );
+
+                ith_subtree += 1;
+                remaining_length >>= 1;
+                range_index += internal_layer_len;
+            }
+
+            starting_index >>= 1;
+            range_len >>= 1;
+        }
+
+        leaves_vec
+            .into_iter()
+            .zip(tree_internals)
+            .map(|(l, internal)| OctoposTree {
+                leaves: l,
+                internals: internal,
+            })
+            .collect()
     }
 
     #[inline]
@@ -217,7 +281,7 @@ pub trait AbstractOracle {
     fn size(&self) -> usize;
 }
 
-impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize> AbstractOracle
+impl<F: Sized + Clone + CanonicalDeserialize + CanonicalSerialize + Default> AbstractOracle
     for OctoposTree<F>
 {
     type QueryResult = OctoposPath;

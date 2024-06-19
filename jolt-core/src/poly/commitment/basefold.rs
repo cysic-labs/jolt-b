@@ -210,8 +210,8 @@ impl BasefoldVirtualIOPPQuery {
                 .par_iter()
                 .zip(virtual_oracles)
                 .all(|(query, root)| {
-                    let left = query.left.verify::<F, _>(&root, &hasher);
-                    let right = query.right.verify::<F, _>(&root, &hasher);
+                    let left = query.left.verify::<F, _>(root, &hasher);
+                    let right = query.right.verify::<F, _>(root, &hasher);
                     left && right
                 });
 
@@ -374,7 +374,6 @@ impl<F: JoltField + TwoAdicField, H: OctoposHasherTrait + Sync + Send> BasefoldP
         res
     }
 
-
     fn batch_basefold_oracle_from_slices(&self, evals: &[&[F]]) -> Vec<OctoposTree<F>> {
         let timer = start_timer!(|| "interpolate over hypercube");
         let coeffs: Vec<Vec<F>> = evals
@@ -495,7 +494,9 @@ impl<F: JoltField + TwoAdicField, H: OctoposHasherTrait + Sync + Send + Clone + 
         let num_vars = poly.get_num_vars();
 
         let mut sumcheck_polys: Vec<_> = Vec::with_capacity(num_vars);
-        let mut iopp_oracles: Vec<OctoposTree<F>> = Vec::with_capacity(num_vars);
+        let mut iopp_codewords: Vec<_> = Vec::with_capacity(num_vars);
+
+        let hasher = H::new_instance();
 
         (0..num_vars).for_each(|_| {
             // NOTE: sumcheck a single step, r_i start from x_0 towards x_n
@@ -510,9 +511,11 @@ impl<F: JoltField + TwoAdicField, H: OctoposHasherTrait + Sync + Send + Clone + 
             sumcheck_polys.push(sc_univariate_poly_i.compressed_polys[0].clone());
             drop(sc_univariate_poly_i);
 
-            let oracle_i = setup.basefold_oracle_from_poly(&sumcheck_poly_vec[0]);
-            iopp_oracles.push(oracle_i);
+            let coeffs = sumcheck_poly_vec[0].interpolate_over_hypercube();
+            iopp_codewords.push(setup.reed_solomon_from_coeffs(coeffs));
         });
+
+        let iopp_oracles = OctoposTree::batch_tree_for_recursive_oracles(iopp_codewords, &hasher);
 
         let iopp_last_oracle_message = iopp_oracles[iopp_oracles.len() - 1].leaves.clone();
         let iopp_challenges = setup.iopp_challenges(num_vars, transcript);
@@ -601,10 +604,27 @@ impl<F: JoltField + TwoAdicField, H: OctoposHasherTrait + Sync + Send + Clone + 
 
         // NOTE: declare sumcheck related variables
         let mut sumcheck_polys: Vec<_> = Vec::with_capacity(joined_num_vars);
-        let mut iopp_oracles: Vec<OctoposTree<F>> = Vec::with_capacity(num_vars);
+        let mut iopp_codewords: Vec<_> = Vec::with_capacity(num_vars);
         let virtual_oracle = BasefoldVirtualOracle::new(commitments);
 
-        (0..joined_num_vars).for_each(|ith_folded_var| {
+        let hasher = H::new_instance();
+
+        (0..=t_len).for_each(|_| {
+            let (sc_univariate_poly_i, _, _) = SumcheckInstanceProof::prove_arbitrary(
+                &<F as JoltField>::zero(),
+                1,
+                &mut sumcheck_poly_vec,
+                merge_function,
+                MERGE_POLY_DEG,
+                transcript,
+            );
+            sumcheck_polys.push(sc_univariate_poly_i.compressed_polys[0].clone());
+        });
+
+        let coeffs = sumcheck_poly_vec[0].interpolate_over_hypercube();
+        iopp_codewords.push(setup.reed_solomon_from_coeffs(coeffs));
+
+        (t_len + 1..joined_num_vars).for_each(|_| {
             let (sc_univariate_poly_i, _, _) = SumcheckInstanceProof::prove_arbitrary(
                 &<F as JoltField>::zero(),
                 1,
@@ -615,16 +635,16 @@ impl<F: JoltField + TwoAdicField, H: OctoposHasherTrait + Sync + Send + Clone + 
             );
             sumcheck_polys.push(sc_univariate_poly_i.compressed_polys[0].clone());
 
-            if ith_folded_var >= t_len {
-                let oracle_i = setup.basefold_oracle_from_poly(&sumcheck_poly_vec[0]);
-                iopp_oracles.push(oracle_i);
-            }
+            let coeffs = sumcheck_poly_vec[0].interpolate_over_hypercube();
+            iopp_codewords.push(setup.reed_solomon_from_coeffs(coeffs));
         });
 
+        let iopp_oracles = OctoposTree::batch_tree_for_recursive_oracles(iopp_codewords, &hasher);
         let iopp_last_oracle_message = iopp_oracles[iopp_oracles.len() - 1].leaves.clone();
         let iopp_challenges = setup.iopp_challenges(num_vars, transcript);
 
         let iopp_queries = (0..setup.verifier_queries)
+            .into_par_iter()
             .zip(iopp_challenges)
             .map(|(_, mut point)| {
                 // NOTE: run the first round in virtual oracle from multiple MTs

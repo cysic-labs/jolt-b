@@ -205,6 +205,8 @@ mod tests {
 
         let preprocessing =
             RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 20);
+
+        let timer = start_timer!(|| "Proving");
         let (proof, commitments) =
             <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks, Sha256>, C, M>>::prove(
                 io_device,
@@ -214,7 +216,12 @@ mod tests {
                 circuit_flags,
                 preprocessing.clone(),
             );
+        end_timer!(timer);
+
+        let timer = start_timer!(|| "Verifying");
         let verification_result = RV32IJoltVM::verify(preprocessing, proof, commitments);
+        end_timer!(timer);
+
         assert!(
             verification_result.is_ok(),
             "Verification failed with error: {:?}",
@@ -246,7 +253,11 @@ mod tests {
                 preprocessing.clone(),
             );
         end_timer!(timer);
+
+        let timer = start_timer!(|| "Verifying");
         let verification_result = RV32IJoltVM::verify(preprocessing, jolt_proof, jolt_commitments);
+        end_timer!(timer);
+
         assert!(
             verification_result.is_ok(),
             "Verification failed with error: {:?}",

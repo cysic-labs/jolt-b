@@ -227,7 +227,7 @@ impl<F: JoltField> DensePolynomial<F> {
         for i in 1..=num_vars {
             let chunk_size = 1 << i;
 
-            coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+            coeffs.chunks_mut(chunk_size).for_each(|chunk| {
                 let half_chunk = chunk_size >> 1;
                 let (left, right) = chunk.split_at_mut(half_chunk);
                 right.iter_mut().zip(left.iter()).for_each(|(a, b)| *a -= b);
@@ -267,12 +267,8 @@ impl<F: JoltField> DensePolynomial<F> {
         // supposing polys share x_0 to x_n, while LDE append k variables,
         // then polynomials are ordered by x_0 ... x_{k - 1}, x_k, ... x_{n + k},
         // where the original coefficients shift right by k.
-        let new_z = polys
-            .iter()
-            .flat_map(|p| p.evals_ref().iter())
-            .cloned()
-            .collect_vec();
 
+        let new_z = polys.iter().map(|p| p.evals()).concat();
         Self::new_padded(new_z)
     }
 
