@@ -2,7 +2,7 @@ use crate::host;
 use crate::jolt::vm::rv32i_vm::{RV32IJoltVM, C, M};
 use crate::jolt::vm::Jolt;
 use crate::poly::commitment::basefold::BasefoldCommitmentScheme;
-use goldilocks::Goldilocks;
+use goldilocks::{Goldilocks, GoldilocksExt2};
 use serde::Serialize;
 use sha2::Sha256;
 
@@ -68,18 +68,22 @@ fn prove_example<T: Serialize>(
 
         let preprocessing: crate::jolt::vm::JoltPreprocessing<
             _,
-            BasefoldCommitmentScheme<Goldilocks, Sha256>,
+            BasefoldCommitmentScheme<Goldilocks, GoldilocksExt2, Sha256>,
         > = RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 22);
 
-        let (jolt_proof, jolt_commitments) =
-            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks, Sha256>, C, M>>::prove(
-                io_device,
-                bytecode_trace,
-                memory_trace,
-                instruction_trace,
-                circuit_flags,
-                preprocessing.clone(),
-            );
+        let (jolt_proof, jolt_commitments) = <RV32IJoltVM as Jolt<
+            _,
+            BasefoldCommitmentScheme<Goldilocks, GoldilocksExt2, Sha256>,
+            C,
+            M,
+        >>::prove(
+            io_device,
+            bytecode_trace,
+            memory_trace,
+            instruction_trace,
+            circuit_flags,
+            preprocessing.clone(),
+        );
 
         // println!("Proof sizing:");
         // serialize_and_print_size("jolt_commitments", &jolt_commitments);
@@ -118,20 +122,24 @@ fn sha2chain() -> Vec<(tracing::Span, Box<dyn FnOnce()>)> {
 
         let preprocessing: crate::jolt::vm::JoltPreprocessing<
             _,
-            BasefoldCommitmentScheme<Goldilocks, Sha256>,
+            BasefoldCommitmentScheme<Goldilocks, GoldilocksExt2, Sha256>,
             // ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>,
             // HyraxScheme<ark_ec::short_weierstrass::Projective<ark_bn254::g1::Config>>,
         > = RV32IJoltVM::preprocess(bytecode.clone(), memory_init, 1 << 20, 1 << 20, 1 << 22);
 
-        let (jolt_proof, jolt_commitments) =
-            <RV32IJoltVM as Jolt<_, BasefoldCommitmentScheme<Goldilocks, Sha256>, C, M>>::prove(
-                io_device,
-                bytecode_trace,
-                memory_trace,
-                instruction_trace,
-                circuit_flags,
-                preprocessing.clone(),
-            );
+        let (jolt_proof, jolt_commitments) = <RV32IJoltVM as Jolt<
+            _,
+            BasefoldCommitmentScheme<Goldilocks, GoldilocksExt2, Sha256>,
+            C,
+            M,
+        >>::prove(
+            io_device,
+            bytecode_trace,
+            memory_trace,
+            instruction_trace,
+            circuit_flags,
+            preprocessing.clone(),
+        );
         let verification_result = RV32IJoltVM::verify(preprocessing, jolt_proof, jolt_commitments);
         assert!(
             verification_result.is_ok(),

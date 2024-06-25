@@ -48,6 +48,14 @@ impl<F: JoltField> DensePolynomial<F> {
         }
     }
 
+    pub fn lift_to<ExtF: JoltField + From<F>>(&self) -> DensePolynomial<ExtF> {
+        DensePolynomial {
+            num_vars: self.num_vars,
+            len: self.len,
+            Z: self.Z.iter().cloned().map(Into::into).collect_vec(),
+        }
+    }
+
     pub fn get_num_vars(&self) -> usize {
         self.num_vars
     }

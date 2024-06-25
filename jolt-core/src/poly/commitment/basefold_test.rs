@@ -1,5 +1,5 @@
 use ark_std::test_rng;
-use goldilocks::Goldilocks;
+use goldilocks::{Goldilocks, GoldilocksExt2};
 use rand_core::RngCore;
 use sha2::Sha256;
 use std::time::Instant;
@@ -16,8 +16,8 @@ use crate::{
     utils::transcript::ProofTranscript,
 };
 
-fn test_basefold_helper<F: JoltField>(num_vars: usize, rng: &mut impl RngCore) {
-    let pp = BasefoldPP::<Goldilocks, Sha256>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
+fn test_basefold_helper(num_vars: usize, rng: &mut impl RngCore) {
+    let pp = BasefoldPP::<Goldilocks, GoldilocksExt2, Sha256>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
 
     let poly_evals = (0..(1 << num_vars))
         .map(|_| Goldilocks::random(rng))
@@ -63,17 +63,13 @@ fn test_basefold_vanilla() {
 
     for i in 5..=18 {
         for _ in 0..10 {
-            test_basefold_helper::<Goldilocks>(i, &mut rng);
+            test_basefold_helper(i, &mut rng);
         }
     }
 }
 
-fn test_basefold_batch_helper<F: JoltField>(
-    num_vars: usize,
-    batch_size: usize,
-    rng: &mut impl RngCore,
-) {
-    let pp = BasefoldPP::<Goldilocks, Sha256>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
+fn test_basefold_batch_helper(num_vars: usize, batch_size: usize, rng: &mut impl RngCore) {
+    let pp = BasefoldPP::<Goldilocks, GoldilocksExt2, Sha256>::new(BASEFOLD_ADDITIONAL_RATE_BITS);
 
     let poly_evals: Vec<Vec<_>> = (0..batch_size)
         .map(|_| {
@@ -132,7 +128,7 @@ fn test_basefold_batch() {
 
     for num_vars in 5..=18 {
         for batch_size in 1..=10 {
-            test_basefold_batch_helper::<Goldilocks>(num_vars, batch_size, &mut rng);
+            test_basefold_batch_helper(num_vars, batch_size, &mut rng);
         }
     }
 }

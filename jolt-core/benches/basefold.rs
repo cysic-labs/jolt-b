@@ -1,6 +1,6 @@
 use ark_std::test_rng;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use goldilocks::{Field, Goldilocks};
+use goldilocks::{Field, Goldilocks, GoldilocksExt2};
 use jolt_core::{
     poly::{
         commitment::{
@@ -30,10 +30,9 @@ fn criterion_basefold_goldilocks(c: &mut Criterion) {
     let mut group = c.benchmark_group("basefold single commit and prove");
     for i in 10..=largest_num_vars {
         let seq_len = 1 << i;
-        let pp = BasefoldCommitmentScheme::<_, Sha256>::setup(&[CommitShape::new(
-            seq_len,
-            BatchType::Big,
-        )]);
+        let pp = BasefoldCommitmentScheme::<Goldilocks, GoldilocksExt2, Sha256>::setup(&[
+            CommitShape::new(seq_len, BatchType::Big),
+        ]);
 
         group
             .bench_function(BenchmarkId::new("basefold commit", i), |b| {
@@ -50,10 +49,9 @@ fn criterion_basefold_goldilocks(c: &mut Criterion) {
     let mut rng = test_rng();
     for i in 10..=largest_num_vars {
         let seq_len = 1 << i;
-        let pp = BasefoldCommitmentScheme::<_, Sha256>::setup(&[CommitShape::new(
-            seq_len,
-            BatchType::Big,
-        )]);
+        let pp = BasefoldCommitmentScheme::<Goldilocks, GoldilocksExt2, Sha256>::setup(&[
+            CommitShape::new(seq_len, BatchType::Big),
+        ]);
 
         group
             .bench_function(BenchmarkId::new("basefold prove", i), |b| {
