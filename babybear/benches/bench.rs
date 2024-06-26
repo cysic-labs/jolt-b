@@ -16,6 +16,7 @@ criterion_group!(bench, bench_fields);
 
 fn bench_fields(c: &mut Criterion) {
     bench_dft::<Babybear>(c, Babybear::NAME);
+    bench_dft::<BabybearExt3>(c, BabybearExt3::NAME);
     bench_field::<Babybear>(c, Babybear::NAME);
     bench_field::<BabybearExt3>(c, BabybearExt3::NAME);
     bench_field::<Fr>(c, "Bn256 scalar")

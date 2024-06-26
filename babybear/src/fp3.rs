@@ -3,6 +3,7 @@
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::io::{Read, Write};
+use std::ops::Div;
 
 use ff::{Field, FromUniformBytes, PrimeField};
 use goldilocks::SmallField;
@@ -374,5 +375,13 @@ impl TryInto<Babybear> for BabybearExt3 {
         } else {
             Err("extension field is not zero")
         }
+    }
+}
+
+impl Div for BabybearExt3 {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self {
+        self * rhs.invert().unwrap()
     }
 }

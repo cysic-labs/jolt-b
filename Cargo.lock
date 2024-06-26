@@ -1066,6 +1066,7 @@ dependencies = [
  "itertools 0.12.1",
  "num-bigint",
  "num-traits",
+ "p3-dft",
  "p3-field",
  "rand_core 0.6.4",
  "rand_xorshift",

@@ -15,6 +15,7 @@ criterion_group!(bench, bench_fields);
 
 fn bench_fields(c: &mut Criterion) {
     bench_dft::<Goldilocks>(c, Goldilocks::NAME);
+    bench_dft::<GoldilocksExt2>(c, GoldilocksExt2::NAME);
     bench_field::<Goldilocks>(c, Goldilocks::NAME);
     bench_field::<GoldilocksExt2>(c, GoldilocksExt2::NAME);
     bench_field::<GoldilocksExt3>(c, GoldilocksExt3::NAME);
@@ -52,8 +53,6 @@ fn bench_field<F: Field>(c: &mut Criterion, field_name: &str) {
     });
     bench_group.finish();
 }
-
-
 
 fn bench_dft<F: Field + TwoAdicField>(c: &mut Criterion, field_name: &str) {
     let mut bench_group = c.benchmark_group(format!("{}", field_name));

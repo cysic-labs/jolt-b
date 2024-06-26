@@ -24,7 +24,6 @@ members = [
     "jolt-core",
     "tracer",
     "common",
-    "babybear",
     "goldilocks",
     "octopos",
     "jolt-sdk",
