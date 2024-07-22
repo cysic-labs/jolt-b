@@ -163,6 +163,11 @@ impl<F: JoltField, G: CurveGroup<ScalarField = F>> CommitmentScheme for HyraxSch
         commitments: &[&Self::Commitment],
         transcript: &mut ProofTranscript,
     ) -> Result<(), ProofVerifyError> {
+        #[cfg(test)]
+        {
+            assert_eq!(commitments.len(), openings.len())
+        }
+
         BatchedHyraxOpeningProof::verify(
             batch_proof,
             generators,

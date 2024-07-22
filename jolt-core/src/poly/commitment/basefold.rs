@@ -19,8 +19,8 @@ use crate::{
     poly::{dense_mlpoly::DensePolynomial, eq_poly::EqPolynomial, field::JoltField},
     subprotocols::sumcheck::SumcheckInstanceProof,
     utils::{
+        compute_dotproduct,
         errors::ProofVerifyError,
-        math::Math,
         transcript::{AppendToTranscript, ProofTranscript},
     },
 };
@@ -259,6 +259,7 @@ impl BasefoldVirtualIOPPQuery {
         challenge_point: usize,
         virtual_oracles: impl IndexedParallelIterator<Item = &'a OctoposDigest> + Clone,
         query_oracles: impl IndexedParallelIterator<Item = &'a OctoposDigest> + Clone,
+        batching_rs: &[ExtF],
         folding_rs: &[ExtF],
     ) -> bool {
         if virtual_oracles.len() == 1 {
@@ -270,7 +271,6 @@ impl BasefoldVirtualIOPPQuery {
 
         let hasher = H::new_instance();
         let num_vars = query_oracles.len();
-        let leading_random_vars = folding_rs.len() - num_vars;
 
         let virtual_mt_verify =
             self.virtual_queries
@@ -305,12 +305,12 @@ impl BasefoldVirtualIOPPQuery {
             })
             .unzip();
 
-        let c1 = DensePolynomial::new_padded(c1s).evaluate(&folding_rs[..leading_random_vars]);
-        let c2 = DensePolynomial::new_padded(c2s).evaluate(&folding_rs[..leading_random_vars]);
+        let c1 = compute_dotproduct(&c1s, &batching_rs);
+        let c2 = compute_dotproduct(&c2s, &batching_rs);
 
         let k = (c2 - c1) / (g2 - g1);
         let b = c1 - k * g1;
-        let expected_codeword = b + k * folding_rs[leading_random_vars];
+        let expected_codeword = b + k * folding_rs[0];
 
         if !self.iopp_query.iopp_round_query[0].check_expected_codeword(
             left_index,
@@ -325,7 +325,7 @@ impl BasefoldVirtualIOPPQuery {
             setup,
             left_index,
             query_oracles,
-            &folding_rs[leading_random_vars + 1..],
+            &folding_rs[1..],
             false,
         )
     }
@@ -674,58 +674,41 @@ impl<
         ));
         // NOTE: first sample from Fiat-Shamir for the t vector that combines
         // multiple multilinear polynomials.
-        let t_len: usize = polynomials.len().next_power_of_two().log_2();
+        let t_len: usize = polynomials.len() - 1;
 
         // NOTE: compose equality polynomial of joining opening point and t_vec
         let num_vars = opening_point.len();
 
-        let joined_point = {
+        let (t_vec, opening_point_lifted) = {
             let mut t_vec =
                 transcript.challenge_vector::<ExtF>(BASEFOLD_BATCH_OPENING_CHALLENGE_TAG, t_len);
-            let opening_point_lifted = opening_point.iter().cloned().map(Into::<ExtF>::into);
-            t_vec.extend(opening_point_lifted);
-            t_vec
+            t_vec.insert(0, <ExtF as JoltField>::one());
+            let point_lifted: Vec<ExtF> =
+                opening_point.iter().cloned().map(Into::into).collect_vec();
+            (t_vec, point_lifted)
         };
 
-        let joined_num_vars = num_vars + t_len;
         let timer2 = start_timer!(|| "compose eq polynomial");
-        let eq_z_t = EqPolynomial::new(joined_point).to_dense();
+        let eq_z_t = EqPolynomial::new(opening_point_lifted).to_dense();
         end_timer!(timer2);
 
         // NOTE: batch polynomials into one, and group them for sumcheck inputs
-        let timer2 = start_timer!(|| "compose lde polynomials");
-        let lifted_polys: Vec<DensePolynomial<ExtF>> =
-            polynomials.iter().map(|p| p.lift_to()).collect();
-        let lde_polynomials =
-            DensePolynomial::low_degree_extension(&lifted_polys.iter().collect::<Vec<_>>());
+        let timer2 = start_timer!(|| "many to 1 merging");
+        let lifted_polys: Vec<_> = polynomials.iter().map(|p| p.lift_to()).collect_vec();
+        let lde_polynomials = DensePolynomial::linear_combination(lifted_polys, &t_vec);
         end_timer!(timer2);
 
         let mut sumcheck_poly_vec = vec![lde_polynomials, eq_z_t];
         let merge_function = |x: &[ExtF]| x.iter().product::<ExtF>();
 
         // NOTE: declare sumcheck related variables
-        let mut sumcheck_polys: Vec<_> = Vec::with_capacity(joined_num_vars);
+        let mut sumcheck_polys: Vec<_> = Vec::with_capacity(num_vars);
         let mut iopp_codewords: Vec<_> = Vec::with_capacity(num_vars);
         let virtual_oracle = BasefoldVirtualOracle::new(commitments);
 
         let hasher = H::new_instance();
 
-        (0..=t_len).for_each(|_| {
-            let (sc_univariate_poly_i, _, _) = SumcheckInstanceProof::prove_arbitrary(
-                &<ExtF as JoltField>::zero(),
-                1,
-                &mut sumcheck_poly_vec,
-                merge_function,
-                MERGE_POLY_DEG,
-                transcript,
-            );
-            sumcheck_polys.push(sc_univariate_poly_i.compressed_polys[0].clone());
-        });
-
-        let coeffs = sumcheck_poly_vec[0].interpolate_over_hypercube();
-        iopp_codewords.push(setup.reed_solomon_from_coeffs(coeffs));
-
-        (t_len + 1..joined_num_vars).for_each(|_| {
+        (0..num_vars).for_each(|_| {
             let (sc_univariate_poly_i, _, _) = SumcheckInstanceProof::prove_arbitrary(
                 &<ExtF as JoltField>::zero(),
                 1,
@@ -872,27 +855,30 @@ impl<
         commitments: &[&Self::Commitment],
         transcript: &mut ProofTranscript,
     ) -> Result<(), ProofVerifyError> {
-        let t_len = commitments.len().next_power_of_two().log_2();
-        let t_vec =
-            transcript.challenge_vector::<ExtF>(BASEFOLD_BATCH_OPENING_CHALLENGE_TAG, t_len);
-        let opening_point_lifted: Vec<ExtF> =
-            opening_point.iter().cloned().map(Into::into).collect();
+        let t_len = commitments.len() - 1;
         let openings_lifted: Vec<ExtF> = openings.iter().cloned().map(Into::into).collect();
-        let sumcheck_claimed_sum = DensePolynomial::new_padded(openings_lifted).evaluate(&t_vec);
+
+        let (t_vec, opening_point_lifted) = {
+            let mut t_vec =
+                transcript.challenge_vector::<ExtF>(BASEFOLD_BATCH_OPENING_CHALLENGE_TAG, t_len);
+            t_vec.insert(0, <ExtF as JoltField>::one());
+            let point_lifted: Vec<ExtF> =
+                opening_point.iter().cloned().map(Into::into).collect_vec();
+            (t_vec, point_lifted)
+        };
+
+        let sumcheck_claimed_sum = compute_dotproduct(&t_vec, &openings_lifted);
 
         let num_vars = opening_point.len();
-        let joined_point = [t_vec.clone(), opening_point_lifted].concat();
-        let joined_num_vars = num_vars + t_len;
-
         // NOTE: run sumcheck and retrieve all sumcheck challenges
         let (combined_f_eq, rs) = batch_proof.sumcheck_transcript.verify(
             sumcheck_claimed_sum,
-            joined_num_vars,
+            num_vars,
             MERGE_POLY_DEG,
             transcript,
         )?;
 
-        let eq_tz_r = EqPolynomial::new(joined_point).evaluate(&rs);
+        let eq_tz_r = EqPolynomial::new(opening_point_lifted).evaluate(&rs);
         let combined_f_r = combined_f_eq / eq_tz_r;
 
         if batch_proof.iopp_last_oracle_message.len() != 1 << setup.rate_bits {
@@ -920,6 +906,7 @@ impl<
                     points[i],
                     virtual_oracles.par_iter(),
                     batch_proof.iopp_oracles.par_iter(),
+                    &t_vec,
                     &rs,
                 )
             })

@@ -9,7 +9,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use core::ops::Index;
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::ops::AddAssign;
+use std::ops::{AddAssign, MulAssign};
 
 #[derive(Debug, PartialEq, CanonicalDeserialize, CanonicalSerialize)]
 pub struct DensePolynomial<F: JoltField> {
@@ -302,6 +302,17 @@ impl<F: JoltField> DensePolynomial<F> {
         eval_tensor_prod
     }
 
+    pub fn linear_combination(mut polys: Vec<Self>, coeffs: &[F]) -> Self {
+        polys.iter_mut().zip(coeffs.iter()).for_each(|(p, t_i)| {
+            *p *= t_i;
+        });
+
+        polys[1..].into_iter().fold(polys[0].clone(), |mut a, b| {
+            a += &b;
+            a
+        })
+    }
+
     pub fn evaluate_at_chi(&self, chis: &[F]) -> F {
         compute_dotproduct(&self.Z, chis)
     }
@@ -385,6 +396,18 @@ impl<F: JoltField> AddAssign<&DensePolynomial<F>> for DensePolynomial<F> {
         assert_eq!(self.num_vars, rhs.num_vars);
         assert_eq!(self.len, rhs.len);
         let summed_evaluations: Vec<F> = self.Z.iter().zip(&rhs.Z).map(|(a, b)| *a + *b).collect();
+
+        *self = Self {
+            num_vars: self.num_vars,
+            len: self.len,
+            Z: summed_evaluations,
+        }
+    }
+}
+
+impl<F: JoltField> MulAssign<&F> for DensePolynomial<F> {
+    fn mul_assign(&mut self, rhs: &F) {
+        let summed_evaluations: Vec<F> = self.Z.iter().map(|a| *a * rhs).collect();
 
         *self = Self {
             num_vars: self.num_vars,

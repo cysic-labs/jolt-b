@@ -738,8 +738,14 @@ where
             .chain(self.openings.memory_t_read)
             .collect();
 
+        let trace_commitments_len = memory_commitment.trace_commitments.len();
+
+        // NOTE: t_read_ram 4 commitments being last 4 commitments of trace_commitments
+        // before these are t_read polynomials
         let t_read_commitments = &memory_commitment.trace_commitments
-            [1 + MEMORY_OPS_PER_INSTRUCTION + 5..4 + 2 * MEMORY_OPS_PER_INSTRUCTION + 5];
+            [trace_commitments_len - 4 - MEMORY_OPS_PER_INSTRUCTION..trace_commitments_len - 4];
+        // let t_read_commitments = &memory_commitment.trace_commitments
+        // [1 + MEMORY_OPS_PER_INSTRUCTION + 5..4 + 2 * MEMORY_OPS_PER_INSTRUCTION + 5];
         let commitments: Vec<_> = range_check_commitment
             .commitments
             .iter()
